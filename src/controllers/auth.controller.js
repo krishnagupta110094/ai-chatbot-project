@@ -24,9 +24,7 @@ exports.registerUser = async (req, res) => {
       password: hashPassword,
     });
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
 
     res.cookie("token", token, {
       httpOnly: true,
@@ -62,9 +60,7 @@ exports.loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
 
     res.cookie("token", token, {
       httpOnly: true,
