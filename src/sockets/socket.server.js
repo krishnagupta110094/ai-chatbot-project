@@ -72,50 +72,79 @@ function initSocketServer(httpServer) {
         return;
       }
 
-      /** Store user message in MongoDB */
-      const userMessage = await MessageModel.create({
-        chat: chatId,
-        user: socket.user._id,
-        content: content,
-        role: "user",
-      });
+      // /** Store user message in MongoDB */
+      //  const userMessage = await MessageModel.create({
+      //   chat: chatId,
+      //   user: socket.user._id,
+      //   content: content,
+      //   role: "user",
+      // });
 
-      /**LONG TERM MEMORY STORE (VECTOR DB) */
-      const vectors = await generateVectors(content);
+      // /**LONG TERM MEMORY STORE (VECTOR DB) */
+      // const vectors = await generateVectors(content);
+
+      /** Store user message and its vectors in parallel */
+      const [userMessage, vectors] = await Promise.all([
+        MessageModel.create({
+          chat: chatId,
+          user: socket.user._id,
+          content: content,
+          role: "user",
+        }),
+        generateVectors(content),
+      ]);
+
       console.log("Generated vectors for message:", vectors);
 
       /** Retrieve relevant memories from vector DB */
-      const relevantMemories = await queryMemory({
-        queryVector: vectors,
-        limit: 3,
-        metadata: { chatId: chatId, userId: socket.user._id },
-      });
+      // const relevantMemories = await queryMemory({
+      //   queryVector: vectors,
+      //   limit: 3,
+      //   metadata: { chatId: chatId, userId: socket.user._id },
+      // });
+      // console.log(
+      //   "Retrieved relevant memories from VectorDB:",
+      //   relevantMemories,
+      // );
+
+      /** Store user message in vector DB for long-term memory */
+      /** Background task at end */
+      // await createMemory({
+      //   vectors: vectors,
+      //   metadata: {
+      //     chatId: chatId,
+      //     userId: socket.user._id,
+      //     text: content,
+      //   },
+      //   messageId: userMessage._id.toString(),
+      // });
+
+      /** Short Term Chat History */
+
+      // const shortTermHistory = (
+      //   await MessageModel.find({ chat: chatId })
+      //     .sort({ createdAt: -1 })
+      //     .limit(20)
+      //     .lean()
+      // ).reverse();
+
+      const [relevantMemories, shortTermHistory] = await Promise.all([
+        queryMemory({
+          queryVector: vectors,
+          limit: 3,
+          metadata: { chatId: chatId, userId: socket.user._id },
+        }),
+        MessageModel.find({ chat: chatId })
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .then((messages) => messages.reverse()),
+      ]);
       console.log(
         "Retrieved relevant memories from VectorDB:",
         relevantMemories,
       );
-
-      /** Store user message in vector DB for long-term memory */
-      await createMemory({
-        vectors: vectors,
-        metadata: {
-          chatId: chatId,
-          userId: socket.user._id,
-          text: content,
-        },
-        messageId: userMessage._id.toString(),
-      });
-
-      /** Short Term Chat History */
-      const LIMIT = 20;
-      const shortTermHistory = (
-        await MessageModel.find({ chat: chatId })
-          .sort({ createdAt: -1 })
-          .limit(LIMIT)
-          .lean()
-      ).reverse();
-
-      // console.log("Chat history for chatId", chatId, ":", shortTermHistory);
+      console.log("Chat history for chatId", chatId, ":", shortTermHistory);
 
       /** Format Short Term Chat History for AI model */
       const formattedShortTermHistory = shortTermHistory.map((item) => {
@@ -149,16 +178,46 @@ function initSocketServer(httpServer) {
         ...formattedLongTermMemories,
         ...formattedShortTermHistory,
       ]);
-      // console.log("Sending AI response to", socket.user.email, ":", response);
-      const responseMessage = await MessageModel.create({
-        chat: chatId,
-        user: socket.user._id,
+
+      /* Emit the AI response back to the client immediately */
+      socket.emit("ai-response", {
         content: response,
-        role: "model",
+        chat: chatId,
       });
 
+      // console.log("Sending AI response to", socket.user.email, ":", response);
+      /* Store AI response in MongoDB */
+      // const responseMessage = await MessageModel.create({
+      //   chat: chatId,
+      //   user: socket.user._id,
+      //   content: response,
+      //   role: "model",
+      // });
+
       /** Generate vectors of AI response */
-      const responseVectors = await generateVectors(response);
+      // const responseVectors = await generateVectors(response);
+
+      /** Store AI response and its vectors in parallel */
+      const [responseMessage, responseVectors] = await Promise.all([
+        MessageModel.create({
+          chat: chatId,
+          user: socket.user._id,
+          content: response,
+          role: "model",
+        }),
+        generateVectors(response),
+      ]);
+
+      await createMemory({
+        vectors: vectors,
+        metadata: {
+          chatId: chatId,
+          userId: socket.user._id,
+          text: content,
+        },
+        messageId: userMessage._id.toString(),
+      });
+
       /** Store AI response in vector DB for long-term memory */
       await createMemory({
         vectors: responseVectors,
@@ -167,10 +226,11 @@ function initSocketServer(httpServer) {
       });
 
       /* Emit the AI response back to the client */
-      socket.emit("ai-response", {
-        content: response,
-        chat: chatId,
-      });
+      /* Response aate hi client ko emit karna hai taki wo turant dekh sake */
+      // socket.emit("ai-response", {
+      //   content: response,
+      //   chat: chatId,
+      // });
     });
 
     socket.on("disconnect", () => {
