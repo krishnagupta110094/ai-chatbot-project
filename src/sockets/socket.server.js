@@ -2,8 +2,12 @@ const { Server } = require("socket.io");
 const cookie = require("cookie");
 const jwt = require("jsonwebtoken");
 const UserModel = require("../models/user.model");
-const { generateAIResponse } = require("../services/ai.service");
+const {
+  generateAIResponse,
+  generateVectors,
+} = require("../services/ai.service");
 const MessageModel = require("../models/message.model");
+const { createMemory, queryMemory } = require("../services/vector.service");
 
 function initSocketServer(httpServer) {
   const io = new Server(httpServer, {
@@ -61,38 +65,108 @@ function initSocketServer(httpServer) {
 
       // console.log("Received AI message from",socket.user.email,":", messagePayload);
 
+      /* Validate message payload */
       const { chatId, content } = messagePayload;
       if (!content || !chatId) {
         console.error("Invalid message payload:", messagePayload);
         return;
       }
-      await MessageModel.create({
+
+      /** Store user message in MongoDB */
+      const userMessage = await MessageModel.create({
         chat: chatId,
         user: socket.user._id,
         content: content,
         role: "user",
       });
-      /** Chat History */
+
+      /**LONG TERM MEMORY STORE (VECTOR DB) */
+      const vectors = await generateVectors(content);
+      console.log("Generated vectors for message:", vectors);
+
+      /** Retrieve relevant memories from vector DB */
+      const relevantMemories = await queryMemory({
+        queryVector: vectors,
+        limit: 3,
+        metadata: { chatId: chatId, userId: socket.user._id },
+      });
+      console.log(
+        "Retrieved relevant memories from VectorDB:",
+        relevantMemories,
+      );
+
+      /** Store user message in vector DB for long-term memory */
+      await createMemory({
+        vectors: vectors,
+        metadata: {
+          chatId: chatId,
+          userId: socket.user._id,
+          text: content,
+        },
+        messageId: userMessage._id.toString(),
+      });
+
+      /** Short Term Chat History */
       const LIMIT = 20;
-      const chatHistory = (await MessageModel.find({ chat: chatId }).sort({ createdAt: -1 }).limit(LIMIT).lean()).reverse();
+      const shortTermHistory = (
+        await MessageModel.find({ chat: chatId })
+          .sort({ createdAt: -1 })
+          .limit(LIMIT)
+          .lean()
+      ).reverse();
 
-      // console.log("Chat history for chatId", chatId, ":", chatHistory);
+      // console.log("Chat history for chatId", chatId, ":", shortTermHistory);
 
-      const formattedChatHistory = chatHistory.map((item) => {
+      /** Format Short Term Chat History for AI model */
+      const formattedShortTermHistory = shortTermHistory.map((item) => {
         return {
           role: item.role,
           parts: [{ text: item.content }],
         };
       });
 
-      const response = await generateAIResponse(formattedChatHistory);
+      /**Format Long Term Memories for AI model */
+      const formattedLongTermMemories = relevantMemories.length
+        ? [
+            {
+              role: "system",
+              parts: [
+                {
+                  text: `These are relevant memories from the user's past interactions that use these Previous Memory Message to answer better.Do NOT mention that they come from memory \n${relevantMemories
+                    .map((m) => m.metadata?.text)
+                    .join("\n")}`,
+                },
+              ],
+            },
+          ]
+        : [];
+
+      /**console both Memory */
+      console.log("Long Term Memories:", formattedLongTermMemories);
+      console.log("Short Term History:", formattedShortTermHistory);
+
+      const response = await generateAIResponse([
+        ...formattedLongTermMemories,
+        ...formattedShortTermHistory,
+      ]);
       // console.log("Sending AI response to", socket.user.email, ":", response);
-      await MessageModel.create({
+      const responseMessage = await MessageModel.create({
         chat: chatId,
         user: socket.user._id,
         content: response,
         role: "model",
       });
+
+      /** Generate vectors of AI response */
+      const responseVectors = await generateVectors(response);
+      /** Store AI response in vector DB for long-term memory */
+      await createMemory({
+        vectors: responseVectors,
+        metadata: { chatId: chatId, userId: socket.user._id, text: response },
+        messageId: responseMessage._id.toString(), // ensure unique ID
+      });
+
+      /* Emit the AI response back to the client */
       socket.emit("ai-response", {
         content: response,
         chat: chatId,
