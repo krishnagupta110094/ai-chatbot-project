@@ -79,3 +79,18 @@ exports.loginUser = async (req, res) => {
       .json({ message: "Error logging in user", error: error.message });
   }
 };
+
+exports.logoutUser = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: false, // true in production (HTTPS)
+  });
+
+  return res.status(200).json({
+    message: "Logged out successfully",
+  });
+};
+
+
+

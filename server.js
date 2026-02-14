@@ -17,7 +17,12 @@ const app = express();
 
 /* Middlewares (ALWAYS before routes) */
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:5173", // Adjust this to your frontend URL
+    credentials: true, // REQUIRED for cookies
+  }),
+);
 app.use(cookieParser());
 
 /* Routes */
