@@ -19,7 +19,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: "https://ai-chatbot-project-frontend.onrender.com", // Adjust this to your frontend URL
+    origin: "https://ai-chatbot-frontend-lqkd.onrender.com", // Adjust this to your frontend URL
     credentials: true, // REQUIRED for cookies
   }),
 );
