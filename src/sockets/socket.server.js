@@ -12,7 +12,7 @@ const { createMemory, queryMemory } = require("../services/vector.service");
 function initSocketServer(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: "https://ai-chatbot-frontend-lqkd.onrender.com",
+      origin: "https://ai-chatbot-frontend-zeta-ashy.vercel.app",
       credentials: true, // REQUIRED for cookies
     },
   });
