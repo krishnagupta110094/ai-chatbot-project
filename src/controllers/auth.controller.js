@@ -28,6 +28,8 @@ exports.registerUser = async (req, res) => {
 
     res.cookie("token", token, {
       httpOnly: true,
+      sameSite: "None",
+      secure: true,
     });
 
     res.status(201).json({
@@ -64,6 +66,8 @@ exports.loginUser = async (req, res) => {
 
     res.cookie("token", token, {
       httpOnly: true,
+      sameSite: "None",
+      secure: true,
     });
 
     res.status(200).json({
@@ -91,6 +95,3 @@ exports.logoutUser = (req, res) => {
     message: "Logged out successfully",
   });
 };
-
-
-
