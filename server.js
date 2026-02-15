@@ -19,7 +19,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: "http://localhost:5173", // Adjust this to your frontend URL
+    origin: "https://ai-chatbot-project-frontend.onrender.com", // Adjust this to your frontend URL
     credentials: true, // REQUIRED for cookies
   }),
 );
